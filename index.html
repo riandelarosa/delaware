@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<style>
+div.tooltip {
+  color: white;
+  position: absolute;
+  text-align: center;
+  width: 150px;
+  height: 30px;
+  padding: 2px;
+  font: 12px sans-serif;
+  background: rgba(0,0,0,.7);
+  border: 1.5px solid black;
+  pointer-events: none;
+}
+</style>
+<html>
+<title>Delaware Population Density, 2022</title>
+<h1>Delaware Population Density, 2022</h1>
+<u>Toggles:</u>&ensp;
+<button onclick="toggleboundaries()">Boundary</button>
+<button id="buttonColor"value="ON">Color</button>&emsp;<br>
+<svg width="600" height="400"></svg>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+<script src="https://d3js.org/topojson.v2.min.js"></script>
+<script>
+//https://bl.ocks.org/mbostock/5562380
+//https://bl.ocks.org/mbostock/4060606
+//https://github.com/camillol/cs424p3/blob/master/data/Population-Density%20By%20County.csv
+//https://github.com/deldersveld/topojson/blob/master/countries/us-states/DE-10-delaware-counties.json
+var density = d3.map();
+var svg = d3.select("svg")
+var tog = document.getElementById("buttonColor"); //global variable used for toggling colors
+var color1 = d3.scaleThreshold() //primary color scheme
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeOrRd[9]);
+var color2 = d3.scaleThreshold() //alternate color scheme
+    .domain([1, 10, 50, 200, 500, 1000, 2000, 4000])
+    .range(d3.schemeBuPu[9]);
+var x = d3.scaleSqrt()
+    .domain([0, 4500])
+    .rangeRound([440, 950]);
+var g = svg.append("g")
+    .attr("class", "key")
+    .attr("transform", "translate(-440,30)");
+//initialize tooptip
+var tooltip = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+var toggle = false;
+function toggleboundaries(){ // function for boundary button
+  if (!toggle) {
+     d3.selectAll("path").style("stroke", "#000").style("stroke-width", 1.5)
+     toggle = true
+  } else if (toggle) {
+    d3.selectAll("path").style("stroke", "#FFF").style("stroke-width", 0.01)
+     toggle = false
+  }
+}
+g.selectAll("rect") //visualize rectangle for legend
+  .data(color1.range().map(function(d) {
+      d = color1.invertExtent(d);
+      if (d[0] == null) d[0] = x.domain()[0];
+      if (d[1] == null) d[1] = x.domain()[1];
+      return d;
+    }))
+  .enter().append("rect")
+    .attr("height", 8)
+    .attr("x", function(d) { return x(d[0]); })
+    .attr("width", function(d) { return x(d[1]) - x(d[0]); })
+    .attr("fill", function(d) { return color1(d[0]); });
+g.append("text") //text for legend
+    .attr("class", "caption")
+    .attr("x", x.range()[0])
+    .attr("y", -6)
+    .attr("fill", "#000")
+    .attr("text-anchor", "start")
+    .attr("font-weight", "bold")
+    .text("Population per square mile");
+g.call(d3.axisBottom(x) //ticks for the legend
+    .tickSize(13)
+    .tickValues(color1.domain()))
+  .select(".domain")
+    .remove();
+
+d3.queue()
+    .defer(d3.json, "delaware.json") //read topojson file
+    .defer(d3.csv, "density.csv", function(data){density.set(+data.GEOID, +data.Dense)}) //create a map with GEOID as keys and density as values
+    .await(ready);
+//projection for the map
+var projection = d3.geoAlbersUsa()
+.translate([-3400 ,720])
+    .scale(13000);
+
+var path = d3.geoPath()
+    .projection(projection);
+
+function ready(error, data){
+    var states = topojson.feature(data, data.objects.counties).features
+    var map = svg.append("g")
+    .attr("class", "counties")
+    .selectAll("path")
+    .data(states)
+    .enter().append("path")
+    .attr("fill", function(d) {
+      return color1(density.get(d.properties.GEOID)); })
+    .attr("d", path)
+    .on("mouseover", function(d){ //tooltip functionality
+        tooltip
+            .transition()
+            .duration(50)
+        tooltip.html("<strong>" + "<u>" + d.properties.NAME + " County " + "</u>" + "</strong>" + "<br>" + "Population / Mile" + "<sup>"+"2"+"</sup>" + ": " + density.get(d.properties.GEOID))
+            .style('top', d3.event.pageY + 10 + 'px')
+            .style('left', d3.event.pageX + 10 + 'px')
+            .style("opacity", 1)
+              })
+    .on("mouseout", function(d){
+        tooltip
+            .transition()
+            .duration(50)
+        tooltip.html("<strong>" + d.properties.NAME + " County " + "</strong>" + "<br>" + "Population/mile^2: " + density.get(d.properties.GEOID))
+            .style('top', d3.event.pageY + 10 + 'px')
+            .style('left', d3.event.pageX + 10 + 'px')
+            .style("opacity", 0)
+              });
+    var buttonColor = d3.select("#buttonColor")
+        .on("click", colorFunction)
+
+    function colorFunction(){ //function for color button
+        if(tog.value == "ON"){ //toggle for the colors
+            tog.value = "OFF"
+        }
+        else if(tog.value == "OFF"){
+            tog.value = "ON"
+        }
+        map.attr("fill", function(d) { //update the fill attribute of map
+          if(tog.value == "ON"){
+              g.selectAll("rect")
+                .attr("fill", function(d) { return color1(d[0]); });
+
+              return color1(density.get(d.properties.GEOID));
+          }
+          else{
+                            g.selectAll("rect")
+                .attr("fill", function(d) { return color2(d[0]); });
+            return color2(density.get(d.properties.GEOID)); }
+            })
+    }
+}
+</script>
+<br><br>
+<span>Rian Delarosa<br>
+Instructor: Suresh Lodha<br>
+CSE 163: Data Programming for Visualizations<br>
+Fall 2022<br><br><span>
+<u>Files Submitted:</u>
+<ul>
+    <li>delaware.json</li>
+    <li>density.csv</li>
+    <li>index.html</li>
+</ul>
+<u>Code &amp; Data Sources:</u>
+<ul>
+    <li><a href="https://bl.ocks.org/mbostock/5562380">Example - California Population Density</a></li>
+    <li><a href="https://bl.ocks.org/mbostock/4060606">Example - Choropleth</a></li>
+    <li><a href="https://github.com/camillol/cs424p3/blob/master/data/Population-Density%20By%20County.csv">csv Info - Population Density By County</a></li>
+    <li><a href="https://github.com/deldersveld/topojson/blob/master/countries/us-states/DE-10-delaware-counties.json">json Info - Delaware</a></li>
+</ul>
+<u>Links:</u>&ensp;
+<a href="https://riandelarosa.github.io/delaware/">Visualization</a>
+<a href="https://github.com/riandelarosa/delaware">GitHub</a>
+<html>
